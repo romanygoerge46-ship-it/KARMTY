@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { Person, Role } from '../types';
+import { Person } from '../types';
 import { updatePerson } from '../services/db';
-import { User, Phone, MapPin, Lock, Shield, Calendar, Globe, Church, Save } from 'lucide-react';
+import { User, Phone, MapPin, Lock, Calendar, Church, Save, AtSign } from 'lucide-react';
 
 interface ProfileProps {
   user: Person;
@@ -12,10 +12,9 @@ interface ProfileProps {
 export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
   const [formData, setFormData] = useState<Partial<Person>>({
     name: user.name,
-    phone: user.phone,
+    phone: user.phone, // Phone is also the username
     address: user.address,
     password: user.password,
-    governorate: user.governorate,
     diocese: user.diocese
   });
 
@@ -24,6 +23,9 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     const updatedUser = { ...user, ...formData } as Person;
+    // Ensure username stays synced with phone
+    updatedUser.username = updatedUser.phone;
+    
     updatePerson(updatedUser);
     setMessage('تم حفظ التعديلات بنجاح');
     onUpdate();
@@ -51,7 +53,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                    <h3 className="text-xl font-bold text-slate-900">{user.name}</h3>
                    <div className="flex gap-2 mt-2">
                       <span className="bg-purple-50 text-purple-700 px-3 py-1 rounded-full text-xs font-bold border border-purple-100">{user.role}</span>
-                      <span className="bg-slate-50 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-100 font-mono">{user.username}</span>
+                      <span className="bg-slate-50 text-slate-600 px-3 py-1 rounded-full text-xs font-bold border border-slate-100 font-mono">{user.phone}</span>
                    </div>
                 </div>
                 <div className="text-xs text-slate-400 font-bold flex flex-col items-end gap-1">
@@ -82,7 +84,7 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                    </div>
 
                    <div className="space-y-2">
-                      <label className="text-xs font-bold text-slate-500 mr-2">رقم الهاتف</label>
+                      <label className="text-xs font-bold text-slate-500 mr-2">رقم الهاتف (اسم المستخدم)</label>
                       <div className="relative">
                          <Phone className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                          <input 
@@ -120,19 +122,27 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                       </div>
                    </div>
 
-                   {/* Disabled fields for context */}
-                   <div className="space-y-2 opacity-70">
-                      <label className="text-xs font-bold text-slate-500 mr-2">المحافظة</label>
-                      <div className="relative">
-                         <Globe className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                         <input disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-10 text-sm font-bold text-slate-600" value={formData.governorate || ''} />
-                      </div>
-                   </div>
-                   <div className="space-y-2 opacity-70">
+                   <div className="space-y-2">
                       <label className="text-xs font-bold text-slate-500 mr-2">الإيبارشية</label>
                       <div className="relative">
                          <Church className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
-                         <input disabled className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-10 text-sm font-bold text-slate-600" value={formData.diocese || ''} />
+                         <input 
+                            className="w-full border-2 border-slate-100 rounded-xl p-3 pr-10 text-sm font-bold text-slate-800 outline-none focus:border-purple-500"
+                            value={formData.diocese || ''} 
+                            onChange={e => setFormData({...formData, diocese: e.target.value})}
+                         />
+                      </div>
+                   </div>
+                   
+                   <div className="space-y-2">
+                      <label className="text-xs font-bold text-slate-500 mr-2">اسم المستخدم (للعرض فقط)</label>
+                      <div className="relative">
+                         <AtSign className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                         <input 
+                            disabled
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-10 text-sm font-bold text-slate-500"
+                            value={formData.phone} 
+                         />
                       </div>
                    </div>
 

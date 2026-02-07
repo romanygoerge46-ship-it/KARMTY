@@ -53,7 +53,6 @@ export const DeveloperDatabase: React.FC<DeveloperDatabaseProps> = ({ people }) 
                <th className="p-3 font-bold whitespace-nowrap">الهاتف</th>
                <th className="p-3 font-bold whitespace-nowrap">المستخدم</th>
                <th className="p-3 font-bold whitespace-nowrap">كلمة المرور</th>
-               <th className="p-3 font-bold whitespace-nowrap">المحافظة</th>
                <th className="p-3 font-bold whitespace-nowrap">الإيبارشية</th>
                <th className="p-3 font-bold whitespace-nowrap">تاريخ الانضمام</th>
              </tr>
@@ -76,7 +75,6 @@ export const DeveloperDatabase: React.FC<DeveloperDatabaseProps> = ({ people }) 
                  <td className="p-3 font-mono dir-ltr text-right font-bold text-slate-800">{person.phone}</td>
                  <td className="p-3 font-mono text-slate-700">{person.username}</td>
                  <td className="p-3 font-mono text-slate-400">{person.password}</td>
-                 <td className="p-3 text-slate-800">{person.governorate}</td>
                  <td className="p-3 text-slate-800">{person.diocese}</td>
                  <td className="p-3 font-mono text-xs text-slate-500">
                    {new Date(person.joinedAt).toLocaleDateString('en-GB')}

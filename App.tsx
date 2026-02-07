@@ -9,11 +9,12 @@ import { PeopleManager } from './components/PeopleManager';
 import { Attendance } from './components/Attendance';
 import { Profile } from './components/Profile';
 import { DeveloperDatabase } from './components/DeveloperDatabase';
+import { FamiliesManager } from './components/FamiliesManager';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Person | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
-  const [data, setData] = useState<AppData>({ people: [], attendance: [] });
+  const [data, setData] = useState<AppData>({ people: [], attendance: [], stages: [], families: [] });
 
   // Load data on mount and whenever authentication changes
   const refreshData = () => {
@@ -53,6 +54,8 @@ const App: React.FC = () => {
         return <PeopleManager people={data.people} onDataChange={refreshData} currentUser={currentUser} showServantsOnly={true} />;
       case 'attendance':
         return <Attendance people={data.people} attendance={data.attendance} onDataChange={refreshData} currentUser={currentUser} />;
+      case 'families':
+         return <FamiliesManager families={data.families} onDataChange={refreshData} currentUser={currentUser} />;
       default:
         return <Dashboard people={data.people} attendance={data.attendance} />;
     }

@@ -1,16 +1,9 @@
 
-export enum Stage {
-  Prim12 = "إبتدائي (1-2)",
-  Prim34 = "إبتدائي (3-4)",
-  Prim56 = "إبتدائي (5-6)",
-  Prep = "إعدادي",
-  Secondary = "ثانوي",
-  UniGrad = "جامعيين وخريجين",
-  Servants = "الخدام والكاهن" // Special stage for hierarchy
-}
+// Stage is now a string to allow dynamic additions
+export type Stage = string;
 
 export enum Role {
-  Developer = "مطور النظام", // New Role
+  Developer = "مطور النظام",
   Priest = "كاهن",
   Servant = "خادم",
   Student = "مخدوم"
@@ -19,17 +12,33 @@ export enum Role {
 export interface Person {
   id: string;
   name: string;
-  username?: string; // For login
-  password?: string; // For login
+  username: string; // Will always be equal to phone
+  password?: string; 
   phone: string;
   address: string;
-  governorate?: string; // New Field
-  diocese?: string;    // New Field
+  diocese?: string;
   stage: Stage;
   role: Role;
   notes: string;
   needsVisitation: boolean;
   joinedAt: string;
+}
+
+export interface PaymentInfo {
+  date: string; // ISO Date String
+  handedOver: boolean; // True if the servant delivered the money to the church
+}
+
+export interface Family {
+  id: string;
+  familyName: string;
+  membersCount: number;
+  phone1: string;
+  phone2?: string;
+  password?: string; // Default '0000'
+  // Dictionary where Key is "YYYY-MM"
+  payments: Record<string, PaymentInfo>; 
+  notes?: string;
 }
 
 export interface AttendanceRecord {
@@ -42,4 +51,6 @@ export interface AttendanceRecord {
 export interface AppData {
   people: Person[];
   attendance: AttendanceRecord[];
+  stages: string[]; // Dynamic list of stages
+  families: Family[]; // New Families list
 }

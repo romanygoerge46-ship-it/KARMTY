@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
 import { Person, AttendanceRecord, Stage, Role } from '../types';
-import { STAGE_OPTIONS, STAGE_PINS } from '../constants';
-import { markAttendance } from '../services/db';
+import { STAGE_PINS } from '../constants';
+import { markAttendance, getDB } from '../services/db';
 import { Check, Lock, Grape, Phone, ArrowRight, XCircle, AlertCircle } from 'lucide-react';
 
 interface AttendanceProps {
@@ -13,6 +13,10 @@ interface AttendanceProps {
 }
 
 export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDataChange, currentUser }) => {
+  const db = getDB();
+  // Filter out "Servants" stage from attendance view
+  const stageOptions = db.stages.filter(s => s !== "الخدام والكاهن");
+  
   const [view, setView] = useState<'stages' | 'list'>(currentUser.role === Role.Student ? 'list' : 'stages');
   const [selectedStage, setSelectedStage] = useState<Stage | null>(currentUser.role === Role.Student ? currentUser.stage : null);
   const [selectedMonth, setSelectedMonth] = useState<number>(new Date().getMonth());
@@ -57,7 +61,8 @@ export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDa
     e.preventDefault();
     if (!targetStage) return;
     const correctPin = STAGE_PINS[targetStage];
-    if (pinInput === correctPin) {
+    // If no pin defined for this stage, allow entry
+    if (!correctPin || pinInput === correctPin) {
       setSelectedStage(targetStage);
       setView('list');
       setShowPinModal(false);
@@ -151,10 +156,10 @@ export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDa
         </div>
 
         <div className="grid grid-cols-1 gap-4">
-          {STAGE_OPTIONS.map((stage, index) => (
+          {stageOptions.map((stage, index) => (
             <button
               key={stage}
-              onClick={() => handleStageClick(stage as Stage)}
+              onClick={() => handleStageClick(stage)}
               className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition-all active:scale-[0.98]"
             >
               <div className="flex items-center gap-4">

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { LayoutDashboard, Users, CalendarCheck, LogOut, UserCog, Grape, ShieldCheck, UserCircle, Database } from 'lucide-react';
+import { LayoutDashboard, Users, CalendarCheck, LogOut, UserCog, Grape, ShieldCheck, UserCircle, Database, HeartHandshake } from 'lucide-react';
 import { Person, Role } from '../types';
 
 interface LayoutProps {
@@ -25,10 +25,12 @@ export const Layout: React.FC<LayoutProps> = ({ children, currentView, onChangeV
     navItems.push({ id: 'database', label: 'قاعدة البيانات', icon: Database });
     navItems.push({ id: 'people', label: 'المخدومين', icon: Users }); // Standard View too
     navItems.push({ id: 'attendance', label: 'الغياب', icon: CalendarCheck });
+    navItems.push({ id: 'families', label: 'الأسر', icon: HeartHandshake });
   } else if (currentUser.role === Role.Priest || currentUser.role === Role.Servant) {
     navItems.push({ id: 'people', label: 'المخدومين', icon: Users });
     navItems.push({ id: 'attendance', label: 'الغياب', icon: CalendarCheck });
     navItems.push({ id: 'servants', label: 'الخدام', icon: UserCog });
+    navItems.push({ id: 'families', label: 'الأسر', icon: HeartHandshake });
   } else if (currentUser.role === Role.Student) {
     navItems.push({ id: 'attendance', label: 'حضوري', icon: CalendarCheck });
   }

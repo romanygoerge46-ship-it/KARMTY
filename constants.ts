@@ -1,38 +1,41 @@
 
-import { Stage, Role } from './types';
+import { Role } from './types';
 
-export const STAGE_OPTIONS = Object.values(Stage).filter(s => s !== Stage.Servants); // Hide Servants stage from dropdowns for students
 export const ROLE_OPTIONS = Object.values(Role);
 
-// Egyptian Governorates for Dropdown
-export const GOVERNORATES = [
-  "القاهرة", "الجيزة", "القليوبية", "الإسكندرية", "البحيرة", "مطروح", "دمياط", "الدقهلية", "كفر الشيخ", "الغربية", "المنوفية", "الشرقية", "بورسعيد", "الإسماعيلية", "السويس", "شمال سيناء", "جنوب سيناء", "بني سويف", "الفيوم", "المنيا", "أسيوط", "الوادي الجديد", "سوهاج", "قنا", "الأقصر", "أسوان", "البحر الأحمر"
-];
-
-// Map stages to PINs: 0001, 0002, etc.
+// Default PINs for initial stages (logic can be expanded for dynamic ones later if needed)
 export const STAGE_PINS: Record<string, string> = {
-  [Stage.Prim12]: "0001",
-  [Stage.Prim34]: "0002",
-  [Stage.Prim56]: "0003",
-  [Stage.Prep]: "0004",
-  [Stage.Secondary]: "0005",
-  [Stage.UniGrad]: "0006",
+  "إبتدائي (1-2)": "0001",
+  "إبتدائي (3-4)": "0002",
+  "إبتدائي (5-6)": "0003",
+  "إعدادي": "0004",
+  "ثانوي": "0005",
+  "جامعيين وخريجين": "0006",
 };
 
 // Seed data with 10 entries covering different roles
 export const SEED_DATA = {
+  stages: [
+    "إبتدائي (1-2)",
+    "إبتدائي (3-4)",
+    "إبتدائي (5-6)",
+    "إعدادي",
+    "ثانوي",
+    "جامعيين وخريجين",
+    "الخدام والكاهن"
+  ],
+  families: [], // Initial empty families list
   people: [
     // 0. Developer (Super Admin)
     {
       id: '0',
       name: 'مطور النظام',
-      username: 'R',      // Updated
-      password: '0000',   // Updated
-      phone: '00000000000',
+      username: 'R',      
+      password: '0000',  
+      phone: 'R', // Special case for developer login
       address: 'System',
-      governorate: 'القاهرة',
       diocese: 'المقر',
-      stage: Stage.Servants,
+      stage: "الخدام والكاهن",
       role: Role.Developer,
       notes: 'حساب المطور - يرى كل شيء',
       needsVisitation: false,
@@ -42,13 +45,12 @@ export const SEED_DATA = {
     {
       id: '1',
       name: 'أبونا أنطونيوس',
-      username: 'abouna',
+      username: '01200000001',
       password: '123',
       phone: '01200000001',
       address: 'الكنيسة',
-      governorate: 'القاهرة',
       diocese: 'شبرا الشمالية',
-      stage: Stage.Servants,
+      stage: "الخدام والكاهن",
       role: Role.Priest,
       notes: 'مشرف الخدمة',
       needsVisitation: false,
@@ -58,13 +60,12 @@ export const SEED_DATA = {
     {
       id: '2',
       name: 'تاسوني مريم',
-      username: 'maryam',
+      username: '01200000002',
       password: '123',
       phone: '01200000002',
       address: 'ش شبرا',
-      governorate: 'القاهرة',
       diocese: 'شبرا الشمالية',
-      stage: Stage.Servants,
+      stage: "الخدام والكاهن",
       role: Role.Servant,
       notes: 'أمينة الخدمة',
       needsVisitation: false,
@@ -74,13 +75,12 @@ export const SEED_DATA = {
     {
       id: '3',
       name: 'أستاذ مينا',
-      username: 'mina',
+      username: '01200000003',
       password: '123',
       phone: '01200000003',
       address: 'دوران شبرا',
-      governorate: 'القاهرة',
       diocese: 'شبرا الشمالية',
-      stage: Stage.Servants,
+      stage: "الخدام والكاهن",
       role: Role.Servant,
       notes: 'خادم إبتدائي',
       needsVisitation: false,
@@ -90,13 +90,12 @@ export const SEED_DATA = {
     {
       id: '4',
       name: 'كراس بولس',
-      username: 'kyrillos',
+      username: '01200000004',
       password: '123',
       phone: '01200000004',
       address: 'الخلفاوي',
-      governorate: 'القاهرة',
       diocese: 'شبرا الشمالية',
-      stage: Stage.Prim12,
+      stage: "إبتدائي (1-2)",
       role: Role.Student,
       notes: '',
       needsVisitation: true,
@@ -106,13 +105,12 @@ export const SEED_DATA = {
     {
       id: '5',
       name: 'جوي ماجد',
-      username: 'joy',
+      username: '01200000005',
       password: '123',
       phone: '01200000005',
       address: 'سانت تريزا',
-      governorate: 'القاهرة',
       diocese: 'شبرا الشمالية',
-      stage: Stage.Prim34,
+      stage: "إبتدائي (3-4)",
       role: Role.Student,
       notes: 'مواظبة',
       needsVisitation: false,
@@ -122,9 +120,11 @@ export const SEED_DATA = {
     {
       id: '6',
       name: 'يوسف هاني',
+      username: '01200000006',
+      password: '123',
       phone: '01200000006',
       address: 'روض الفرج',
-      stage: Stage.Prim56,
+      stage: "إبتدائي (5-6)",
       role: Role.Student,
       notes: '',
       needsVisitation: false,
@@ -134,9 +134,11 @@ export const SEED_DATA = {
     {
       id: '7',
       name: 'مارتن عادل',
+      username: '01200000007',
+      password: '123',
       phone: '01200000007',
       address: 'المسرة',
-      stage: Stage.Prep,
+      stage: "إعدادي",
       role: Role.Student,
       notes: 'يحتاج افتقاد',
       needsVisitation: true,
@@ -146,9 +148,11 @@ export const SEED_DATA = {
     {
       id: '8',
       name: 'ساندي سامي',
+      username: '01200000008',
+      password: '123',
       phone: '01200000008',
       address: 'شيكولاني',
-      stage: Stage.Secondary,
+      stage: "ثانوي",
       role: Role.Student,
       notes: '',
       needsVisitation: false,
@@ -158,9 +162,11 @@ export const SEED_DATA = {
     {
       id: '9',
       name: 'بيشوي جورج',
+      username: '01200000009',
+      password: '123',
       phone: '01200000009',
       address: 'الترعة',
-      stage: Stage.UniGrad,
+      stage: "جامعيين وخريجين",
       role: Role.Student,
       notes: 'شماس',
       needsVisitation: false,
@@ -170,9 +176,11 @@ export const SEED_DATA = {
     {
       id: '10',
       name: 'مارينا مجدي',
+      username: '01200000010',
+      password: '123',
       phone: '01200000010',
       address: 'خلوصي',
-      stage: Stage.UniGrad,
+      stage: "جامعيين وخريجين",
       role: Role.Student,
       notes: '',
       needsVisitation: false,

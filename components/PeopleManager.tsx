@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { Person, Stage, Role } from '../types';
-import { STAGE_OPTIONS, STAGE_PINS, GOVERNORATES } from '../constants';
-import { Search, Trash2, Edit2, AlertCircle, Phone, MapPin, Lock, ArrowRight, Plus, UserPlus, ShieldAlert, Church, Globe } from 'lucide-react';
-import { addPerson, deletePerson, updatePerson } from '../services/db';
+import { STAGE_PINS } from '../constants';
+import { Search, Trash2, Edit2, AlertCircle, Phone, MapPin, Lock, ArrowRight, Plus, UserPlus, ShieldAlert, Church, Layers, ArrowUp, ArrowDown } from 'lucide-react';
+import { addPerson, deletePerson, updatePerson, addStage, deleteStage, reorderStage, getDB } from '../services/db';
 
 interface PeopleManagerProps {
   people: Person[];
@@ -14,6 +14,13 @@ interface PeopleManagerProps {
 
 export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChange, currentUser, showServantsOnly = false }) => {
   const isDeveloper = currentUser.role === Role.Developer;
+  const isPriest = currentUser.role === Role.Priest;
+  const canManageStages = isDeveloper || isPriest;
+  
+  // Get dynamic stages from DB
+  const db = getDB();
+  const availableStages = db.stages;
+  
   // If Developer or showing servants, default to list view. Students view needs stage selection.
   const [view, setView] = useState<'stages' | 'list'>((showServantsOnly || isDeveloper) ? 'list' : 'stages');
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
@@ -23,6 +30,10 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
   const [targetStage, setTargetStage] = useState<Stage | null>(null);
   const [pinInput, setPinInput] = useState('');
   const [pinError, setPinError] = useState(false);
+
+  // Stage Management State
+  const [showStageManager, setShowStageManager] = useState(false);
+  const [newStageName, setNewStageName] = useState('');
 
   // Search/Filter
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,9 +50,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     password: '',
     phone: '',
     address: '',
-    governorate: 'القاهرة',
     diocese: '',
-    stage: Stage.Prim12,
+    stage: availableStages[0],
     role: Role.Student,
     notes: '',
     needsVisitation: false
@@ -59,7 +69,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     e.preventDefault();
     if (!targetStage) return;
     const correctPin = STAGE_PINS[targetStage];
-    if (pinInput === correctPin) {
+    // Allow entry if no PIN is defined for this new stage
+    if (!correctPin || pinInput === correctPin) {
       setSelectedStage(targetStage);
       setView('list');
       setShowPinModal(false);
@@ -71,14 +82,16 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
 
   // --- Filtering ---
   const filteredPeople = people.filter(p => {
-    // Developer sees everyone in the main list, unless specific filtering is added later
+    // 1. Hide Developer from Servants List always
+    if (p.role === Role.Developer) return false;
+
+    // Developer sees everyone in the main list
     if (isDeveloper && !showServantsOnly) {
-         // Developer logic: Show everyone matching search
-         return p.name.includes(searchTerm) || p.phone.includes(searchTerm) || p.username?.includes(searchTerm);
+         return p.name.includes(searchTerm) || p.phone.includes(searchTerm);
     }
 
     if (showServantsOnly) {
-       // Show Servants, Priests, and Developers
+       // Show Servants and Priests (exclude Developer handled above)
        if (p.role === Role.Student) return false;
     } else {
        // Normal View (Students)
@@ -90,14 +103,25 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
   });
 
   const canEdit = (targetPerson?: Person) => {
-    if (isDeveloper) return true; // Developer can edit everyone
-    if (currentUser.role === Role.Student) return false;
-    if (currentUser.role === Role.Priest) return true;
+    // Developer can edit everyone
+    if (isDeveloper) return true; 
+
+    // Priest can edit everyone except Developer
+    if (isPriest) {
+        if (targetPerson?.role === Role.Developer) return false;
+        return true;
+    }
+
+    // Servant Permissions
     if (currentUser.role === Role.Servant) {
-      if (!targetPerson) return true;
-      if (targetPerson.role === Role.Priest || targetPerson.role === Role.Developer) return false;
+      // Cannot edit Servants, Priests, Developers
+      if (showServantsOnly) return false; 
+      // Can add/edit students
+      if (!targetPerson) return true; // Can add
+      if (targetPerson.role !== Role.Student) return false; // Cannot edit non-students
       return true; 
     }
+    
     return false;
   };
 
@@ -108,13 +132,11 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     setFormError(null);
     setFormData({
       name: '',
-      username: '',
       password: '',
       phone: '',
       address: '',
-      governorate: 'القاهرة',
       diocese: '',
-      stage: selectedStage || Stage.Prim12,
+      stage: selectedStage || availableStages[0],
       role: showServantsOnly ? Role.Servant : Role.Student,
       notes: '',
       needsVisitation: false
@@ -139,16 +161,16 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
       return;
     }
 
+    const dataToSave = { ...formData, username: formData.phone }; // Ensure username syncs with phone
+
     if (isAdding) {
-      // Create new person with Validation
-      const result = addPerson({ ...formData } as Person);
+      const result = addPerson(dataToSave as Person);
       if (!result.success) {
         setFormError(result.message || 'حدث خطأ أثناء الإضافة');
         return;
       }
     } else if (editingPerson) {
-      // Update existing
-      updatePerson({ ...editingPerson, ...formData } as Person);
+      updatePerson({ ...editingPerson, ...dataToSave } as Person);
     }
 
     setIsModalOpen(false);
@@ -166,6 +188,26 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     }
   };
 
+  // --- Stage Management ---
+  const handleAddStage = () => {
+      if (newStageName.trim()) {
+          addStage(newStageName.trim());
+          setNewStageName('');
+          onDataChange();
+      }
+  };
+  const handleDeleteStage = (stage: string) => {
+      if (confirm(`هل أنت متأكد من حذف مرحلة "${stage}"؟`)) {
+          deleteStage(stage);
+          onDataChange();
+      }
+  };
+  
+  const handleReorder = (index: number, direction: 'up' | 'down') => {
+      reorderStage(index, direction);
+      onDataChange();
+  };
+
   // --- RENDER ---
 
   // 1. PIN Modal
@@ -176,7 +218,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
           <div className="w-12 h-12 bg-purple-100 text-purple-600 rounded-full flex items-center justify-center mx-auto mb-3">
             <Lock size={24} />
           </div>
-          <h3 className="text-lg font-bold text-slate-800 mb-1">رمز الدخول</h3>
+          <h3 className="text-lg font-bold text-slate-900 mb-1">رمز الدخول</h3>
           <p className="text-slate-600 mb-4 text-xs font-semibold">أدخل الرمز لـ {targetStage}</p>
           <form onSubmit={verifyPin}>
             <input 
@@ -201,17 +243,72 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
 
   // 2. Stage Selection View (Skipped for Developer)
   if (view === 'stages' && !isDeveloper) {
+    // Filter out "Servants" stage from the list for Students View
+    const displayStages = availableStages.filter(s => s !== "الخدام والكاهن");
+
     return (
       <div className="space-y-6">
-        <div className="text-center mb-6">
+        <div className="text-center mb-6 relative">
           <h2 className="text-2xl font-bold text-slate-900">قائمة المخدومين</h2>
           <p className="text-slate-600 text-sm mt-1 font-semibold">اختر المرحلة للدخول</p>
+          
+          {canManageStages && (
+              <button 
+                onClick={() => setShowStageManager(!showStageManager)}
+                className="absolute top-0 left-0 p-2 bg-slate-100 rounded-full text-slate-600 hover:bg-slate-200 hover:text-purple-700 transition-colors"
+                title="إدارة المراحل"
+              >
+                  <Layers size={20} />
+              </button>
+          )}
         </div>
+
+        {/* Stage Manager (Admin Only) */}
+        {showStageManager && canManageStages && (
+            <div className="bg-slate-50 border-2 border-slate-200 rounded-2xl p-4 mb-6 animate-in slide-in-from-top-2">
+                <h3 className="font-bold text-slate-900 mb-3 text-sm">إدارة المراحل</h3>
+                <div className="flex gap-2 mb-4">
+                    <input 
+                        type="text" 
+                        placeholder="اسم المرحلة الجديدة..."
+                        className="flex-1 border rounded-xl px-3 py-2 text-sm outline-none focus:border-purple-500"
+                        value={newStageName}
+                        onChange={e => setNewStageName(e.target.value)}
+                    />
+                    <button onClick={handleAddStage} className="bg-purple-600 text-white px-4 rounded-xl font-bold text-sm hover:bg-purple-700">إضافة</button>
+                </div>
+                <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {availableStages.map((s, idx) => (
+                        <div key={s} className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-100">
+                            <span className="text-sm font-bold text-slate-700">{s}</span>
+                            <div className="flex items-center gap-1">
+                                {idx > 0 && (
+                                    <button onClick={() => handleReorder(idx, 'up')} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-purple-600">
+                                        <ArrowUp size={14} />
+                                    </button>
+                                )}
+                                {idx < availableStages.length - 1 && (
+                                    <button onClick={() => handleReorder(idx, 'down')} className="p-1 hover:bg-slate-100 rounded text-slate-500 hover:text-purple-600">
+                                        <ArrowDown size={14} />
+                                    </button>
+                                )}
+                                {s !== "الخدام والكاهن" && (
+                                    <button onClick={() => handleDeleteStage(s)} className="p-1 hover:bg-slate-100 rounded text-red-400 hover:text-red-600">
+                                        <Trash2 size={14}/>
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        )}
+
         <div className="grid grid-cols-1 gap-4">
-          {STAGE_OPTIONS.map((stage, index) => (
+          {displayStages.map((stage, index) => (
             <button
               key={stage}
-              onClick={() => handleStageClick(stage as Stage)}
+              onClick={() => handleStageClick(stage)}
               className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-center justify-between hover:shadow-md transition-all active:scale-[0.98]"
             >
               <div className="flex items-center gap-4">
@@ -337,27 +434,15 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                   </div>
                 )}
                 
-                {/* Developer Fields: Governorate / Diocese */}
-                {(isDeveloper || person.governorate) && (
-                    <div className="grid grid-cols-2 gap-2 mt-1 pt-2 border-t border-slate-200">
-                        <div className="flex items-center gap-1.5 text-xs">
-                             <Globe size={12} className="text-slate-500"/>
-                             <span className="text-slate-500 font-semibold">المحافظة:</span>
-                             <span className="font-bold text-slate-800">{person.governorate || '-'}</span>
-                        </div>
+                {/* Developer Fields: Diocese */}
+                {(isDeveloper || person.diocese) && (
+                    <div className="mt-1 pt-2 border-t border-slate-200">
                         <div className="flex items-center gap-1.5 text-xs">
                              <Church size={12} className="text-slate-500"/>
                              <span className="text-slate-500 font-semibold">الإيبارشية:</span>
                              <span className="font-bold text-slate-800">{person.diocese || '-'}</span>
                         </div>
                     </div>
-                )}
-
-                {person.username && (
-                   <div className="flex items-center gap-2 text-xs text-slate-400 pt-1 border-t border-slate-200 mt-1">
-                      <span className="font-semibold text-slate-500">اسم المستخدم:</span>
-                      <span className="font-mono text-slate-700 font-bold">{person.username}</span>
-                   </div>
                 )}
               </div>
 
@@ -410,34 +495,6 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
 
               {/* Data Section */}
               <div className="space-y-4">
-                 {/* Credentials Section */}
-                 <div className="bg-purple-50 p-4 rounded-xl border border-purple-100 space-y-3">
-                    <h4 className="text-purple-800 font-bold text-xs mb-1 flex items-center gap-1">
-                       <Lock size={12} /> بيانات الدخول
-                    </h4>
-                    <div>
-                      <input
-                        required
-                        type="text"
-                        className="w-full border border-purple-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-600 outline-none font-bold text-slate-900 placeholder:text-slate-400"
-                        placeholder="اسم المستخدم"
-                        value={formData.username}
-                        onChange={e => setFormData({ ...formData, username: e.target.value })}
-                        disabled={!isAdding && !isDeveloper} 
-                      />
-                    </div>
-                    <div>
-                      <input
-                        required
-                        type="text"
-                        className="w-full border border-purple-200 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-purple-600 outline-none font-bold text-slate-900 placeholder:text-slate-400"
-                        placeholder="كلمة المرور"
-                        value={formData.password}
-                        onChange={e => setFormData({ ...formData, password: e.target.value })}
-                      />
-                    </div>
-                 </div>
-
                  {/* Basic Info */}
                  <div className="grid grid-cols-1 gap-4">
                     <input
@@ -452,7 +509,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                       required
                       type="tel"
                       className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-slate-400 outline-none transition-all text-right dir-ltr font-mono font-bold text-slate-900 placeholder:text-slate-500"
-                      placeholder="رقم الهاتف"
+                      placeholder="رقم الهاتف (سيكون اسم المستخدم)"
                       value={formData.phone}
                       onChange={e => setFormData({ ...formData, phone: e.target.value })}
                     />
@@ -467,7 +524,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                        value={formData.stage}
                        onChange={e => setFormData({...formData, stage: e.target.value as Stage})}
                      >
-                       {STAGE_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                       {availableStages.map(s => <option key={s} value={s}>{s}</option>)}
                      </select>
                    </div>
                    <div>
@@ -486,18 +543,19 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                    </div>
                 </div>
 
-                {/* Location - Developer / Admin fields */}
-                <div className="grid grid-cols-2 gap-3">
-                   <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1.5">المحافظة</label>
-                      <select 
-                        className="w-full border-2 border-slate-200 rounded-xl p-3 bg-slate-50 text-sm font-bold text-slate-900"
-                        value={formData.governorate}
-                        onChange={e => setFormData({...formData, governorate: e.target.value})}
-                      >
-                         {GOVERNORATES.map(g => <option key={g} value={g}>{g}</option>)}
-                      </select>
-                   </div>
+                <div className="grid grid-cols-1 gap-3">
+                    <input
+                        required
+                        type="password"
+                        className="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-slate-400 outline-none font-bold text-slate-900 placeholder:text-slate-500"
+                        placeholder="كلمة المرور"
+                        value={formData.password}
+                        onChange={e => setFormData({ ...formData, password: e.target.value })}
+                    />
+                </div>
+
+                {/* Developer / Admin fields */}
+                <div className="grid grid-cols-1 gap-3">
                    <div>
                       <label className="block text-xs font-bold text-slate-700 mb-1.5">الإيبارشية</label>
                       <input
