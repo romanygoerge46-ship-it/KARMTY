@@ -102,6 +102,7 @@ export const FamiliesManager: React.FC<FamiliesManagerProps> = ({ families, onDa
         phone1: '',
         phone2: '',
         password: '0000',
+        churchId: currentUser.churchId, // Auto assign current user's church
         notes: '',
         payments: {}
     });
@@ -116,8 +117,12 @@ export const FamiliesManager: React.FC<FamiliesManagerProps> = ({ families, onDa
 
   const handleDelete = (id: string) => {
     if (confirm('هل أنت متأكد من حذف هذه الأسرة؟')) {
-      deleteFamily(id);
-      onDataChange();
+      const success = deleteFamily(id);
+      if (success) {
+        onDataChange();
+      } else {
+          alert('حدث خطأ أثناء الحذف');
+      }
     }
   };
 
@@ -148,9 +153,6 @@ export const FamiliesManager: React.FC<FamiliesManagerProps> = ({ families, onDa
 
   // --- Financial Stats ---
   const totalFamilies = filteredFamilies.length;
-  
-  // Calculate payments based on ALL families (not just filtered, usually for financials we look at total scope, but here filtered makes sense if searching)
-  // Let's use filteredFamilies for display stats to allow drilling down, but Handover affects ALL DB records for that month.
   
   // For the Stats Bar, we will use the *Filtered* list to match what is seen.
   const paidFamiliesInView = filteredFamilies.filter(f => getPaymentInfo(f) !== null);

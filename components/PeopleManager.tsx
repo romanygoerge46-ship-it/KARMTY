@@ -21,8 +21,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
   const db = getDB();
   const availableStages = db.stages;
   
-  // If Developer or showing servants, default to list view. Students view needs stage selection.
-  const [view, setView] = useState<'stages' | 'list'>((showServantsOnly || isDeveloper) ? 'list' : 'stages');
+  // CHANGED: Developer now starts with 'stages' view just like normal users (unless viewing Servants list)
+  const [view, setView] = useState<'stages' | 'list'>((showServantsOnly) ? 'list' : 'stages');
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
   
   // PIN Logic
@@ -51,6 +51,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     phone: '',
     address: '',
     diocese: '',
+    churchId: '',
     stage: availableStages[0],
     role: Role.Student,
     notes: '',
@@ -59,6 +60,13 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
 
   // --- PIN Handlers ---
   const handleStageClick = (stage: Stage) => {
+    // Developer Bypass: Skip PIN check
+    if (isDeveloper) {
+        setSelectedStage(stage);
+        setView('list');
+        return;
+    }
+
     setTargetStage(stage);
     setPinInput('');
     setPinError(false);
@@ -85,16 +93,11 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     // 1. Hide Developer from Servants List always
     if (p.role === Role.Developer) return false;
 
-    // Developer sees everyone in the main list
-    if (isDeveloper && !showServantsOnly) {
-         return p.name.includes(searchTerm) || p.phone.includes(searchTerm);
-    }
-
     if (showServantsOnly) {
-       // Show Servants and Priests (exclude Developer handled above)
+       // Show Servants and Priests
        if (p.role === Role.Student) return false;
     } else {
-       // Normal View (Students)
+       // Normal View (Students) - Now applies to Developer too in this view
        if (p.role !== Role.Student) return false;
        if (selectedStage && p.stage !== selectedStage) return false;
     }
@@ -136,6 +139,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
       phone: '',
       address: '',
       diocese: '',
+      // Automatically assign the current user's churchId to the new person
+      churchId: currentUser.churchId,
       stage: selectedStage || availableStages[0],
       role: showServantsOnly ? Role.Servant : Role.Student,
       notes: '',
@@ -161,16 +166,23 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
       return;
     }
 
-    const dataToSave = { ...formData, username: formData.phone }; // Ensure username syncs with phone
+    const dataToSave = { ...formData, username: formData.phone }; 
 
     if (isAdding) {
+      // Cast to Person but Ensure joinedAt is handled in db.ts if missing
       const result = addPerson(dataToSave as Person);
       if (!result.success) {
         setFormError(result.message || 'حدث خطأ أثناء الإضافة');
         return;
       }
     } else if (editingPerson) {
-      updatePerson({ ...editingPerson, ...dataToSave } as Person);
+      // Ensure we preserve the ID
+      const updatedData = { ...editingPerson, ...dataToSave };
+      const success = updatePerson(updatedData as Person);
+      if (!success) {
+          setFormError('فشل التعديل، لم يتم العثور على السجل');
+          return;
+      }
     }
 
     setIsModalOpen(false);
@@ -183,7 +195,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
       if (success) {
         onDataChange();
       } else {
-        alert("حدث خطأ أثناء الحذف");
+        alert("حدث خطأ أثناء الحذف، قد يكون السجل غير موجود.");
       }
     }
   };
@@ -241,8 +253,8 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
     );
   }
 
-  // 2. Stage Selection View (Skipped for Developer)
-  if (view === 'stages' && !isDeveloper) {
+  // 2. Stage Selection View (Now shown for Developer too)
+  if (view === 'stages') {
     // Filter out "Servants" stage from the list for Students View
     const displayStages = availableStages.filter(s => s !== "الخدام والكاهن");
 
@@ -250,7 +262,9 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
       <div className="space-y-6">
         <div className="text-center mb-6 relative">
           <h2 className="text-2xl font-bold text-slate-900">قائمة المخدومين</h2>
-          <p className="text-slate-600 text-sm mt-1 font-semibold">اختر المرحلة للدخول</p>
+          <p className="text-slate-600 text-sm mt-1 font-semibold">
+              {isDeveloper ? 'اختر المرحلة للإدارة' : 'اختر المرحلة للدخول'}
+          </p>
           
           {canManageStages && (
               <button 
@@ -320,7 +334,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                 </div>
               </div>
               <div className="bg-slate-50 p-2 rounded-full">
-                 <Lock size={16} className="text-slate-400" />
+                 {isDeveloper ? <Edit2 size={16} className="text-slate-400" /> : <Lock size={16} className="text-slate-400" />}
               </div>
             </button>
           ))}
@@ -336,15 +350,13 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
         {/* Header */}
         <div className="flex items-center justify-between">
            <div className="flex items-center gap-2">
-              {!showServantsOnly && !isDeveloper && (
-                <button onClick={() => setView('stages')} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200">
+              {!showServantsOnly && (
+                <button onClick={() => setView('stages')} className="p-2 bg-slate-100 rounded-lg hover:bg-slate-200 transition-colors">
                   <ArrowRight size={20} className="text-slate-600" />
                 </button>
               )}
               <h2 className="text-xl font-bold text-slate-900">
-                {isDeveloper 
-                    ? 'لوحة تحكم المطور (كل البيانات)' 
-                    : showServantsOnly 
+                {showServantsOnly 
                         ? 'قائمة الخدام' 
                         : `مرحلة ${selectedStage}`
                 }
@@ -368,7 +380,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
           <Search className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500" size={20} />
           <input
             type="text"
-            placeholder={isDeveloper ? "بحث في كل البيانات..." : "بحث بالاسم أو الهاتف..."}
+            placeholder={showServantsOnly ? "بحث عن خادم..." : "بحث عن مخدوم بالاسم أو الهاتف..."}
             className="w-full pr-10 pl-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-purple-600 outline-none shadow-sm text-slate-900 placeholder:text-slate-500 font-medium"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
@@ -396,6 +408,7 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                       <div className="flex items-center gap-2 mt-1">
                           <span className="text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-700 font-bold border border-slate-200">{person.role}</span>
                           {isDeveloper && <span className="text-[10px] bg-blue-50 px-2 py-0.5 rounded text-blue-700 font-bold border border-blue-100">{person.stage}</span>}
+                          {isDeveloper && <span className="text-[10px] bg-yellow-50 px-2 py-0.5 rounded text-yellow-700 font-bold border border-yellow-100">{person.churchId}</span>}
                       </div>
                     </div>
                     
@@ -543,6 +556,18 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                    </div>
                 </div>
 
+                {isDeveloper && (
+                     <div>
+                       <label className="block text-xs font-bold text-slate-700 mb-1.5">كود الكنيسة (مطور فقط)</label>
+                       <input
+                        type="text"
+                        className="w-full border-2 border-slate-200 rounded-xl p-3 text-sm focus:border-purple-600 outline-none font-bold text-slate-900"
+                        value={formData.churchId}
+                        onChange={e => setFormData({ ...formData, churchId: e.target.value })}
+                      />
+                     </div>
+                )}
+
                 <div className="grid grid-cols-1 gap-3">
                     <input
                         required
@@ -582,6 +607,17 @@ export const PeopleManager: React.FC<PeopleManagerProps> = ({ people, onDataChan
                     value={formData.notes}
                     onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   />
+                  
+                  <div className="flex items-center gap-2 mt-2">
+                       <input 
+                         type="checkbox" 
+                         id="needsVisitation"
+                         className="w-5 h-5 accent-red-600"
+                         checked={formData.needsVisitation}
+                         onChange={e => setFormData({...formData, needsVisitation: e.target.checked})}
+                       />
+                       <label htmlFor="needsVisitation" className="text-sm font-bold text-slate-700">يحتاج إلى افتقاد عاجل</label>
+                  </div>
               </div>
 
               <div className="flex gap-3 pt-4 border-t border-slate-50">

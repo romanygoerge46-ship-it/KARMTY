@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { Lock, Phone, User, LogIn, UserPlus, Grape, Church, ChevronDown } from 'lucide-react';
+import { Lock, Phone, User, LogIn, UserPlus, Grape, Church, ChevronDown, Building2 } from 'lucide-react';
 import { Person, Role } from '../types';
 import { getDB, addPerson } from '../services/db';
 
@@ -18,6 +18,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [diocese, setDiocese] = useState('');
+  const [churchId, setChurchId] = useState(''); // Church Code
   const [selectedStage, setSelectedStage] = useState('');
   
   const [error, setError] = useState<string | null>(null);
@@ -33,22 +34,31 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     // Developer Backdoor
     if (phone === 'R') {
        const dev = db.people.find(p => p.role === Role.Developer);
-       if (dev && dev.password === password) { // Check password for dev too if needed, or allow bypass based on logic
+       if (dev && dev.password === password) { 
            onLogin(dev);
            return;
        } else if (dev) {
-           // Allow simple R login if setup that way, or check pass
            onLogin(dev);
            return;
        }
     }
 
-    const user = db.people.find(p => p.phone === phone && p.password === password);
+    if (!churchId) {
+        setError('يرجى إدخال كود الكنيسة / الخدمة');
+        return;
+    }
+
+    // Search for user matching Phone + Password + Church Code
+    const user = db.people.find(p => 
+        p.phone === phone && 
+        p.password === password && 
+        p.churchId === churchId.trim()
+    );
 
     if (user) {
       onLogin(user);
     } else {
-      setError('بيانات الدخول غير صحيحة');
+      setError('بيانات الدخول غير صحيحة. تأكد من رقم الهاتف، كلمة المرور، وكود الكنيسة.');
     }
   };
 
@@ -56,9 +66,30 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
     e.preventDefault();
     setError(null);
 
-    if (!phone || !password || !name) {
-      setError('يرجى ملء كافة البيانات المطلوبة');
+    // Basic fields check
+    if (!phone || !password || !name || !churchId) {
+      setError('يرجى ملء كافة البيانات المطلوبة بما فيها كود الكنيسة');
       return;
+    }
+
+    // 1. Password Length Check
+    if (password.length < 4) {
+        setError('كلمة المرور يجب أن لا تقل عن 4 أرقام/أحرف');
+        return;
+    }
+
+    // 2. Egyptian Phone Regex Check
+    const egyptianPhoneRegex = /^01[0125][0-9]{8}$/;
+    if (!egyptianPhoneRegex.test(phone)) {
+        setError('رقم الهاتف غير صحيح. يجب أن يكون 11 رقم ويبدأ بـ 01');
+        return;
+    }
+
+    // 3. Strict Church Code Validation
+    const churchCodeRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[a-zA-Z0-9]{4}$/;
+    if (!churchCodeRegex.test(churchId)) {
+        setError('كود الكنيسة غير صحيح. يجب أن يتكون من 4 خانات ويحتوي على: حرف كبير، حرف صغير، ورقم.');
+        return;
     }
 
     if (selectedRole === Role.Student && !selectedStage) {
@@ -77,6 +108,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
       password,
       address,
       diocese,
+      churchId: churchId.trim(), // Save church ID
       stage: finalStage,
       role: selectedRole,
       notes: 'تم التسجيل من التطبيق',
@@ -158,12 +190,28 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
 
           {activeTab === 'login' ? (
             <form onSubmit={handleLogin} className="space-y-4 animate-in fade-in slide-in-from-bottom-2">
+              
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-500 mr-2">كود الكنيسة / الخدمة</label>
+                <div className="relative">
+                  <Building2 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                  <input
+                    type="text"
+                    required
+                    className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-slate-800"
+                    placeholder="رمز الكنيسة"
+                    value={churchId}
+                    onChange={(e) => setChurchId(e.target.value)}
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-500 mr-2">رقم الهاتف</label>
                 <div className="relative">
                   <Phone className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                   <input
-                    type="text" // changed from tel to text to allow 'R'
+                    type="text" 
                     className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-slate-800 dir-ltr text-right font-mono"
                     placeholder="01xxxxxxxxx"
                     value={phone}
@@ -179,7 +227,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   <input
                     type="password"
                     className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-slate-800"
-                    placeholder="••••••"
+                    placeholder="••••"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -197,6 +245,20 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                        تسجيل حساب جديد كـ {selectedRole === Role.Student ? 'مخدوم' : selectedRole === Role.Servant ? 'خادم' : 'كاهن'}
                    </p>
                </div>
+
+              {/* Church Code Field */}
+              <div className="relative">
+                <Building2 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                <input
+                  required
+                  type="text"
+                  maxLength={4}
+                  className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-sm text-slate-800"
+                  placeholder="كود الكنيسة (4 خانات: حرف كبير، صغير، رقم)"
+                  value={churchId}
+                  onChange={(e) => setChurchId(e.target.value)}
+                />
+              </div>
 
               <div className="relative">
                 <User className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
@@ -216,7 +278,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   required
                   type="tel"
                   className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-sm text-slate-800 dir-ltr text-right font-mono"
-                  placeholder="رقم الهاتف"
+                  placeholder="رقم الهاتف (01xxxxxxxxx)"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                 />
@@ -254,7 +316,7 @@ export const Login: React.FC<LoginProps> = ({ onLogin }) => {
                   required
                   type="password"
                   className="w-full border-2 border-slate-200 rounded-xl p-3 pr-10 outline-none focus:border-purple-600 font-bold text-sm text-slate-800"
-                  placeholder="كلمة المرور"
+                  placeholder="كلمة المرور (4 أرقام على الأقل)"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                 />

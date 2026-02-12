@@ -10,20 +10,25 @@ import { Attendance } from './components/Attendance';
 import { Profile } from './components/Profile';
 import { DeveloperDatabase } from './components/DeveloperDatabase';
 import { FamiliesManager } from './components/FamiliesManager';
+import { FriendsChat } from './components/FriendsChat';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<Person | null>(null);
   const [currentView, setCurrentView] = useState('dashboard');
-  const [data, setData] = useState<AppData>({ people: [], attendance: [], stages: [], families: [] });
+  const [data, setData] = useState<AppData>({ people: [], attendance: [], stages: [], families: [], messages: [] });
 
   // Load data on mount and whenever authentication changes
   const refreshData = () => {
     const db = getDB();
     setData(db);
-    // Also update current user object if it changed in DB
+    // CRITICAL FIX: Update current user object if it changed in DB
     if (currentUser) {
       const updatedUser = db.people.find(p => p.id === currentUser.id);
-      if (updatedUser) setCurrentUser(updatedUser);
+      if (updatedUser) {
+          if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
+              setCurrentUser(updatedUser);
+          }
+      }
     }
   };
 
@@ -37,27 +42,48 @@ const App: React.FC = () => {
     return <Login onLogin={(user) => setCurrentUser(user)} />;
   }
 
+  // --- Filtering Logic for Multi-Tenancy ---
+  // Developer sees ALL data.
+  // Others see only data belonging to their churchId.
+  const isDev = currentUser.role === Role.Developer;
+
+  const filteredPeople = isDev 
+    ? data.people 
+    : data.people.filter(p => p.churchId === currentUser.churchId);
+
+  const filteredAttendance = isDev
+    ? data.attendance
+    : data.attendance.filter(a => a.churchId === currentUser.churchId || data.people.find(p => p.id === a.personId)?.churchId === currentUser.churchId);
+
+  const filteredFamilies = isDev
+    ? data.families
+    : data.families.filter(f => f.churchId === currentUser.churchId);
+
+
   const renderContent = () => {
     switch (currentView) {
       case 'dashboard':
-        return <Dashboard people={data.people} attendance={data.attendance} />;
+        return <Dashboard people={filteredPeople} attendance={filteredAttendance} />;
       case 'profile':
         return <Profile user={currentUser} onUpdate={refreshData} />;
       case 'database':
+        // Only Developer accesses this, and they see everything (data.people)
         if (currentUser.role === Role.Developer) {
-           return <DeveloperDatabase people={data.people} />;
+           return <DeveloperDatabase people={data.people} onDataChange={refreshData} currentUser={currentUser} />;
         }
-        return <Dashboard people={data.people} attendance={data.attendance} />;
+        return <Dashboard people={filteredPeople} attendance={filteredAttendance} />;
       case 'people':
-        return <PeopleManager people={data.people} onDataChange={refreshData} currentUser={currentUser} />;
+        return <PeopleManager people={filteredPeople} onDataChange={refreshData} currentUser={currentUser} />;
       case 'servants':
-        return <PeopleManager people={data.people} onDataChange={refreshData} currentUser={currentUser} showServantsOnly={true} />;
+        return <PeopleManager people={filteredPeople} onDataChange={refreshData} currentUser={currentUser} showServantsOnly={true} />;
       case 'attendance':
-        return <Attendance people={data.people} attendance={data.attendance} onDataChange={refreshData} currentUser={currentUser} />;
+        return <Attendance people={filteredPeople} attendance={filteredAttendance} onDataChange={refreshData} currentUser={currentUser} />;
       case 'families':
-         return <FamiliesManager families={data.families} onDataChange={refreshData} currentUser={currentUser} />;
+         return <FamiliesManager families={filteredFamilies} onDataChange={refreshData} currentUser={currentUser} />;
+      case 'friends':
+         return <FriendsChat currentUser={currentUser} />;
       default:
-        return <Dashboard people={data.people} attendance={data.attendance} />;
+        return <Dashboard people={filteredPeople} attendance={filteredAttendance} />;
     }
   };
 
