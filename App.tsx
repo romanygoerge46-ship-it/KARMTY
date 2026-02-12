@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { getDB } from './services/db';
+import { getDB, subscribe } from './services/db';
 import { AppData, Person, Role } from './types';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
@@ -21,10 +21,11 @@ const App: React.FC = () => {
   const refreshData = () => {
     const db = getDB();
     setData(db);
-    // CRITICAL FIX: Update current user object if it changed in DB
+    // CRITICAL FIX: Update current user object if it changed in DB (e.g. role updated by Admin)
     if (currentUser) {
       const updatedUser = db.people.find(p => p.id === currentUser.id);
       if (updatedUser) {
+          // Only update state if something actually changed to avoid loop
           if (JSON.stringify(updatedUser) !== JSON.stringify(currentUser)) {
               setCurrentUser(updatedUser);
           }
@@ -33,10 +34,16 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-    if (currentUser) {
-      refreshData();
-    }
-  }, [currentUser?.id]); // Only refresh on login
+    // 1. Initial Load
+    refreshData();
+
+    // 2. Subscribe to Firebase Realtime Updates
+    const unsubscribe = subscribe(() => {
+       refreshData();
+    });
+
+    return () => unsubscribe();
+  }, [currentUser?.id]); 
 
   if (!currentUser) {
     return <Login onLogin={(user) => setCurrentUser(user)} />;
