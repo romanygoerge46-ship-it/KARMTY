@@ -20,8 +20,11 @@ const App: React.FC = () => {
   // Load data on mount and whenever authentication changes
   const refreshData = () => {
     const db = getDB();
-    setData(db);
-    // CRITICAL FIX: Update current user object if it changed in DB (e.g. role updated by Admin)
+    // CRITICAL FIX: Spread the object to create a new reference, forcing React to re-render
+    // even if the underlying arrays were mutated in place (Optimistic Updates).
+    setData({ ...db });
+    
+    // Update current user object if it changed in DB (e.g. role updated by Admin)
     if (currentUser) {
       const updatedUser = db.people.find(p => p.id === currentUser.id);
       if (updatedUser) {
@@ -37,7 +40,7 @@ const App: React.FC = () => {
     // 1. Initial Load
     refreshData();
 
-    // 2. Subscribe to Firebase Realtime Updates
+    // 2. Subscribe to Firebase Realtime Updates and Local Changes
     const unsubscribe = subscribe(() => {
        refreshData();
     });

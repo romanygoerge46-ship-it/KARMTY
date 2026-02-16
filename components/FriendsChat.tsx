@@ -219,7 +219,7 @@ export const FriendsChat: React.FC<FriendsChatProps> = ({ currentUser }) => {
                {/* Send Button */}
                <button 
                  onClick={() => handleSendMessage('text', newMessage)}
-                 disabled={!newMessage.trim() && !isRecording}
+                 disabled={(!newMessage.trim() || isRecording)}
                  className="p-3 bg-purple-700 text-white rounded-xl shadow-lg shadow-purple-200 hover:bg-purple-800 disabled:opacity-50 disabled:shadow-none transition-all active:scale-95"
                >
                    <Send size={20} className={currentUser.role === Role.Student ? "ml-0.5" : ""} /> 

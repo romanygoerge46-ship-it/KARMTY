@@ -18,8 +18,33 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
 
-// Local cache to maintain synchronous `getDB` behavior for UI components
-let localCache: AppData = {
+const STORAGE_KEY = 'karmaty_local_db_v1';
+
+// --- HELPER: Load/Save LocalStorage ---
+const loadFromLocal = (): AppData | null => {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      return JSON.parse(saved);
+    }
+  } catch (e) {
+    console.error("Error loading local data", e);
+  }
+  return null;
+};
+
+const saveToLocal = (data: AppData) => {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.error("Error saving local data", e);
+  }
+};
+
+// --- INITIALIZATION ---
+// Try to load from LocalStorage first (Instant Load), otherwise fallback to Seed
+const initialData = loadFromLocal();
+let localCache: AppData = initialData || {
   people: [],
   attendance: [],
   stages: SEED_DATA.stages,
@@ -32,7 +57,6 @@ const listeners: Array<() => void> = [];
 
 export const subscribe = (listener: () => void) => {
   listeners.push(listener);
-  // Unsubscribe function
   return () => {
     const index = listeners.indexOf(listener);
     if (index > -1) listeners.splice(index, 1);
@@ -43,31 +67,37 @@ const notifyListeners = () => {
   listeners.forEach(l => l());
 };
 
-// --- REALTIME SYNC ---
+// --- REALTIME SYNC (Firebase) ---
 const dbRef = ref(db);
 onValue(dbRef, (snapshot) => {
   const data = snapshot.val();
   
   if (data) {
-    // Firebase stores arrays as Objects if they have custom keys or sparse indexes.
-    // We convert them back to Arrays for the App to consume.
-    localCache = {
-      stages: data.stages || SEED_DATA.stages,
-      // Convert Object map to Array
-      people: data.people ? Object.values(data.people) : [],
-      attendance: data.attendance ? Object.values(data.attendance) : [],
-      families: data.families ? Object.values(data.families) : [],
-      messages: data.messages ? Object.values(data.messages) : [],
+    // Firebase stores arrays as Objects sometimes. Convert to Arrays.
+    const newCache: AppData = {
+      stages: (data.stages || SEED_DATA.stages) as string[],
+      people: data.people ? (Object.values(data.people) as Person[]) : [],
+      attendance: data.attendance ? (Object.values(data.attendance) as AttendanceRecord[]) : [],
+      families: data.families ? (Object.values(data.families) as Family[]) : [],
+      messages: data.messages ? (Object.values(data.messages) as Message[]) : [],
     };
+    
+    // Update local cache from Cloud
+    localCache = newCache;
+    // Persist Cloud data to LocalStorage for next refresh
+    saveToLocal(localCache);
   } else {
-    // Database is empty (First run ever) -> Seed it
-    seedDatabase();
+    // If Firebase is empty but we have no local data, seed it
+    if (!initialData) {
+        seedDatabase();
+    } else {
+        if (localCache.people.length === 0) seedDatabase();
+    }
   }
   notifyListeners();
 });
 
 const seedDatabase = () => {
-    // Prepare seed data for Firebase (Objects instead of Arrays for collections with IDs)
     const updates: any = {};
     updates['/stages'] = SEED_DATA.stages;
     
@@ -84,40 +114,50 @@ export const getDB = (): AppData => {
   return localCache;
 };
 
-// NOTE: saveDB is deprecated in Firebase mode as we save granularly. 
-// Keeping it empty to satisfy legacy calls if any, but logic is moved to individual functions.
-export const saveDB = (data: AppData) => {
-  console.warn("saveDB called but Firebase mode uses granular updates.");
-};
-
 // --- PEOPLE ---
 
 export const addPerson = (person: Person): { success: boolean; message?: string; generatedUsername?: string } => {
-  // Validation
+  // 1. Password Validation
   if (!person.password || person.password.length < 4) {
       return { success: false, message: 'كلمة المرور يجب أن لا تقل عن 4 أرقام/أحرف.' };
   }
+
+  // 2. Phone Validation (Sanitize first)
+  const cleanPhone = person.phone.replace(/\D/g, ''); // Remove non-digits
   const egyptianPhoneRegex = /^01[0125][0-9]{8}$/;
-  if (!egyptianPhoneRegex.test(person.phone)) {
-      return { success: false, message: 'رقم الهاتف غير صحيح. يجب أن يكون رقم مصري مكون من 11 رقم.' };
-  }
-  const churchCodeRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[a-zA-Z0-9]{4}$/;
-  if (!churchCodeRegex.test(person.churchId)) {
-      return { success: false, message: 'كود الكنيسة غير صحيح. يجب أن يكون 4 خانات ويحتوي على: حرف كبير، حرف صغير، ورقم.' };
+  
+  if (!egyptianPhoneRegex.test(cleanPhone)) {
+      return { success: false, message: `رقم الهاتف غير صحيح (${person.phone}).` };
   }
   
-  // Check duplicates in local cache (Optimistic check)
+  // Update person with clean phone
+  person.phone = cleanPhone;
+
+  // 3. Church ID Validation (Allow 'MAIN' for developers/seed)
+  if (person.churchId !== 'MAIN') {
+      const churchCodeRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[0-9])[a-zA-Z0-9]{4}$/;
+      if (!churchCodeRegex.test(person.churchId)) {
+          return { success: false, message: `كود الكنيسة غير صحيح (${person.churchId}).` };
+      }
+  }
+  
+  // 4. Duplicate Check
   const phoneExists = localCache.people.some(p => p.phone === person.phone);
   if (phoneExists) {
-    return { success: false, message: 'رقم الهاتف هذا مسجل بالفعل لمستخدم آخر.' };
+    return { success: false, message: `رقم الهاتف ${person.phone} مسجل بالفعل.` };
   }
 
   const finalPerson = { ...person };
-  finalPerson.id = person.id || Date.now().toString(); // Ensure ID
+  finalPerson.id = person.id || Date.now().toString() + Math.floor(Math.random() * 1000);
   finalPerson.username = person.phone;
   if (!finalPerson.joinedAt) finalPerson.joinedAt = new Date().toISOString();
 
-  // Firebase Write
+  // Optimistic Update (Local First)
+  localCache.people.push(finalPerson);
+  saveToLocal(localCache);
+  notifyListeners();
+
+  // Cloud Update
   set(ref(db, `people/${finalPerson.id}`), finalPerson);
   
   return { success: true, generatedUsername: finalPerson.username };
@@ -126,33 +166,35 @@ export const addPerson = (person: Person): { success: boolean; message?: string;
 export const updatePerson = (updatedPerson: Person): boolean => {
   if (!updatedPerson.id) return false;
   
-  // Preserve churchId logic handled in UI, but safe check here
-  const existing = localCache.people.find(p => p.id === updatedPerson.id);
-  if (existing && !updatedPerson.churchId) {
-      updatedPerson.churchId = existing.churchId;
-  }
-  if (updatedPerson.phone !== existing?.phone) {
-      updatedPerson.username = updatedPerson.phone;
-  }
+  const existingIndex = localCache.people.findIndex(p => p.id === updatedPerson.id);
+  if (existingIndex > -1) {
+      // Preserve data
+      if (!updatedPerson.churchId) updatedPerson.churchId = localCache.people[existingIndex].churchId;
+      if (updatedPerson.phone !== localCache.people[existingIndex].phone) {
+          updatedPerson.username = updatedPerson.phone;
+      }
+      
+      // Optimistic Update
+      localCache.people[existingIndex] = updatedPerson;
+      saveToLocal(localCache);
+      notifyListeners();
 
-  update(ref(db, `people/${updatedPerson.id}`), updatedPerson);
-  return true;
+      // Cloud
+      update(ref(db, `people/${updatedPerson.id}`), updatedPerson);
+      return true;
+  }
+  return false;
 };
 
 export const deletePerson = (id: string): boolean => {
+  // Optimistic Update
+  localCache.people = localCache.people.filter(p => p.id !== id);
+  localCache.attendance = localCache.attendance.filter(a => a.personId !== id);
+  saveToLocal(localCache);
+  notifyListeners();
+
+  // Cloud
   remove(ref(db, `people/${id}`));
-  // Also cleanup attendance
-  // Note: In a real DB we might want to query, but here we can iterate or leave orphan records 
-  // (leaving orphans is cheaper for now, but let's try to clean if possible)
-  // Deleting attendance records requires knowing their IDs. 
-  const attendanceToDelete = localCache.attendance.filter(a => a.personId === id);
-  const updates: any = {};
-  updates[`people/${id}`] = null;
-  attendanceToDelete.forEach(a => {
-      updates[`attendance/${a.id}`] = null;
-  });
-  
-  update(ref(db), updates);
   return true;
 };
 
@@ -162,23 +204,35 @@ export const markAttendance = (personId: string, date: string, isPresent: boolea
   const person = localCache.people.find(p => p.id === personId);
   if (!person) return;
 
-  // Check if record exists
-  const existingRecord = localCache.attendance.find(a => a.personId === personId && a.date === date);
+  const existingIndex = localCache.attendance.findIndex(a => a.personId === personId && a.date === date);
 
   if (isPresent) {
-      if (!existingRecord) {
+      if (existingIndex === -1) {
           const newRecord: AttendanceRecord = {
-              id: `${personId}_${date}`, // Unique Key strategy
+              id: `${personId}_${date}`,
               personId,
               date,
               isPresent: true,
               churchId: person.churchId
           };
+          
+          // Optimistic
+          localCache.attendance.push(newRecord);
+          saveToLocal(localCache);
+          notifyListeners();
+
           set(ref(db, `attendance/${newRecord.id}`), newRecord);
       }
   } else {
-      if (existingRecord) {
-          remove(ref(db, `attendance/${existingRecord.id}`));
+      if (existingIndex > -1) {
+          const recordId = localCache.attendance[existingIndex].id;
+          
+          // Optimistic
+          localCache.attendance.splice(existingIndex, 1);
+          saveToLocal(localCache);
+          notifyListeners();
+
+          remove(ref(db, `attendance/${recordId}`));
       }
   }
 };
@@ -191,8 +245,10 @@ export const getAttendanceCount = (personId: string): number => {
 
 export const addStage = (stageName: string) => {
   if (!localCache.stages.includes(stageName)) {
-    const newStages = [...localCache.stages, stageName];
-    set(ref(db, 'stages'), newStages);
+    localCache.stages.push(stageName);
+    saveToLocal(localCache);
+    notifyListeners();
+    set(ref(db, 'stages'), localCache.stages);
     return true;
   }
   return false;
@@ -200,8 +256,10 @@ export const addStage = (stageName: string) => {
 
 export const deleteStage = (stageName: string) => {
     if (localCache.stages.includes(stageName)) {
-        const newStages = localCache.stages.filter(s => s !== stageName);
-        set(ref(db, 'stages'), newStages);
+        localCache.stages = localCache.stages.filter(s => s !== stageName);
+        saveToLocal(localCache);
+        notifyListeners();
+        set(ref(db, 'stages'), localCache.stages);
         return true;
     }
     return false;
@@ -211,18 +269,32 @@ export const reorderStage = (index: number, direction: 'up' | 'down') => {
     const newStages = [...localCache.stages];
     if (direction === 'up' && index > 0) {
         [newStages[index], newStages[index - 1]] = [newStages[index - 1], newStages[index]];
-        set(ref(db, 'stages'), newStages);
     } else if (direction === 'down' && index < newStages.length - 1) {
         [newStages[index], newStages[index + 1]] = [newStages[index + 1], newStages[index]];
-        set(ref(db, 'stages'), newStages);
+    } else {
+        return;
     }
+    
+    localCache.stages = newStages;
+    saveToLocal(localCache);
+    notifyListeners();
+    set(ref(db, 'stages'), newStages);
 };
 
 // --- FAMILIES ---
 
 export const addFamily = (family: Family): boolean => {
-  family.id = family.id || Date.now().toString();
+  family.id = family.id || Date.now().toString() + Math.floor(Math.random() * 1000);
   if (!family.payments) family.payments = {};
+  
+  // Clean phone numbers
+  family.phone1 = family.phone1.replace(/\D/g, '');
+  if (family.phone2) family.phone2 = family.phone2.replace(/\D/g, '');
+
+  localCache.families.push(family);
+  saveToLocal(localCache);
+  notifyListeners();
+
   set(ref(db, `families/${family.id}`), family);
   return true;
 };
@@ -230,29 +302,38 @@ export const addFamily = (family: Family): boolean => {
 export const updateFamily = (updatedFamily: Family): boolean => {
   if (!updatedFamily.id) return false;
   
-  // Safe merge logic for payments if not provided (though usually provided full)
-  const existing = localCache.families.find(f => f.id === updatedFamily.id);
-  if (existing) {
+  const idx = localCache.families.findIndex(f => f.id === updatedFamily.id);
+  if (idx > -1) {
+      const existing = localCache.families[idx];
       if (!updatedFamily.churchId) updatedFamily.churchId = existing.churchId;
       if (!updatedFamily.payments) updatedFamily.payments = existing.payments;
+
+      localCache.families[idx] = updatedFamily;
+      saveToLocal(localCache);
+      notifyListeners();
+
+      update(ref(db, `families/${updatedFamily.id}`), updatedFamily);
+      return true;
   }
-  
-  update(ref(db, `families/${updatedFamily.id}`), updatedFamily);
-  return true;
+  return false;
 };
 
 export const deleteFamily = (id: string): boolean => {
+  localCache.families = localCache.families.filter(f => f.id !== id);
+  saveToLocal(localCache);
+  notifyListeners();
+
   remove(ref(db, `families/${id}`));
   return true;
 };
 
 export const toggleFamilyPayment = (familyId: string, year: number, month: number) => {
-    const family = localCache.families.find(f => f.id === familyId);
-    if (family) {
+    const idx = localCache.families.findIndex(f => f.id === familyId);
+    if (idx > -1) {
+        const family = localCache.families[idx];
         const key = `${year}-${String(month + 1).padStart(2, '0')}`;
-        // Clone payments object
-        const newPayments = { ...(family.payments || {}) };
         
+        const newPayments = { ...(family.payments || {}) };
         if (newPayments[key]) {
             delete newPayments[key];
         } else {
@@ -262,7 +343,12 @@ export const toggleFamilyPayment = (familyId: string, year: number, month: numbe
             };
         }
         
-        // Update specific node
+        // Update Local
+        localCache.families[idx] = { ...family, payments: newPayments };
+        saveToLocal(localCache);
+        notifyListeners();
+
+        // Update Cloud
         set(ref(db, `families/${familyId}/payments`), newPayments);
     }
 };
@@ -270,14 +356,19 @@ export const toggleFamilyPayment = (familyId: string, year: number, month: numbe
 export const handoverPayments = (year: number, month: number) => {
     const key = `${year}-${String(month + 1).padStart(2, '0')}`;
     const updates: any = {};
+    let changed = false;
 
     localCache.families.forEach(family => {
         if (family.payments && family.payments[key] && !family.payments[key].handedOver) {
-             updates[`families/${family.id}/payments/${key}/handedOver`] = true;
+             family.payments[key].handedOver = true; // Local update
+             updates[`families/${family.id}/payments/${key}/handedOver`] = true; // Cloud update prep
+             changed = true;
         }
     });
 
-    if (Object.keys(updates).length > 0) {
+    if (changed) {
+        saveToLocal(localCache);
+        notifyListeners();
         update(ref(db), updates);
         return true;
     }
@@ -287,20 +378,15 @@ export const handoverPayments = (year: number, month: number) => {
 // --- MESSAGES / CHAT ---
 
 export const addMessage = (msg: Message) => {
-  // Use push to generate unique ID and sortable key by time (mostly)
-  // Or manually use ID if provided
   if (!msg.id) msg.id = Date.now().toString();
   
+  localCache.messages.push(msg);
+  saveToLocal(localCache);
+  notifyListeners(); // Instant UI update
+
   set(ref(db, `messages/${msg.id}`), msg);
-  
-  // Optional: Cleanup old messages if list gets too big? 
-  // For now, Firebase handles large lists well, but listening to all might be heavy.
-  // We rely on simple filtering in getMessagesByCode for now.
 };
 
 export const getMessagesByCode = (code: string) => {
-  // Note: Filtering happens on client side with this implementation. 
-  // For production with thousands of messages, we should use Firebase Query `orderByChild('groupCode').equalTo(code)`
-  // But for now, we filter the localCache which is kept in sync.
   return localCache.messages.filter(m => m.groupCode === code).sort((a,b) => a.timestamp.localeCompare(b.timestamp));
 };

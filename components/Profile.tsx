@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Person } from '../types';
 import { updatePerson } from '../services/db';
-import { User, Phone, MapPin, Lock, Calendar, Church, Save, AtSign } from 'lucide-react';
+import { User, Phone, MapPin, Lock, Calendar, Church, Save, AtSign, Code, Heart, Sparkles } from 'lucide-react';
 
 interface ProfileProps {
   user: Person;
@@ -156,6 +156,33 @@ export const Profile: React.FC<ProfileProps> = ({ user, onUpdate }) => {
                 </div>
              </form>
           </div>
+       </div>
+
+       {/* Developer Credit Card */}
+       <div className="bg-gradient-to-br from-slate-50 to-white border border-slate-200 rounded-2xl p-6 text-center shadow-sm mt-8 relative overflow-hidden">
+           <div className="absolute top-0 right-0 p-4 opacity-5">
+               <Code size={80} className="text-slate-900" />
+           </div>
+           <div className="relative z-10 flex flex-col items-center gap-2">
+               <div className="w-10 h-10 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 mb-1">
+                   <Sparkles size={20} />
+               </div>
+               <h3 className="font-bold text-slate-900">عن التطبيق</h3>
+               <p className="text-sm text-slate-600 max-w-xs mx-auto mb-2">
+                   تم تطوير هذا النظام لخدمة الكنيسة ومدارس الأحد لتسهيل الافتقاد والمتابعة الروحية.
+               </p>
+               <div className="w-full h-px bg-slate-200 max-w-[150px] mx-auto my-2"></div>
+               <div className="flex flex-col items-center">
+                   <p className="text-xs font-bold text-slate-500 mb-1">تطوير وبرمجة</p>
+                   <h4 className="text-lg font-bold text-purple-700 flex items-center gap-2">
+                       م/ روماني
+                   </h4>
+                   <div className="flex items-center gap-1.5 mt-2 bg-purple-50 px-3 py-1.5 rounded-full border border-purple-100">
+                       <Heart size={12} className="text-pink-500 fill-pink-500" />
+                       <span className="text-xs font-serif text-purple-900 font-semibold italic">"اذكروني في صلواتكم"</span>
+                   </div>
+               </div>
+           </div>
        </div>
     </div>
   );

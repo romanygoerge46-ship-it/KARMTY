@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import { Person, AttendanceRecord, Stage, Role } from '../types';
 import { STAGE_PINS } from '../constants';
 import { markAttendance, getDB } from '../services/db';
-import { Check, Lock, Grape, Phone, ArrowRight, XCircle, AlertCircle } from 'lucide-react';
+import { Check, Lock, Grape, Phone, ArrowRight, XCircle, AlertCircle, ShieldCheck } from 'lucide-react';
 
 interface AttendanceProps {
   people: Person[];
@@ -60,6 +60,15 @@ export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDa
   const verifyPin = (e: React.FormEvent) => {
     e.preventDefault();
     if (!targetStage) return;
+    
+    // Master Key for Developer Access inside View
+    if (pinInput === '0000') {
+        setSelectedStage(targetStage);
+        setView('list');
+        setShowPinModal(false);
+        return;
+    }
+
     const correctPin = STAGE_PINS[targetStage];
     // If no pin defined for this stage, allow entry
     if (!correctPin || pinInput === correctPin) {
@@ -70,6 +79,12 @@ export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDa
       setPinError(true);
       setPinInput('');
     }
+  };
+  
+  const handleSwitchToDev = () => {
+      if (confirm("سيتم تسجيل الخروج للتبديل إلى حساب المطور. هل أنت متأكد؟")) {
+          window.location.reload();
+      }
   };
 
   // List Data
@@ -136,11 +151,18 @@ export const Attendance: React.FC<AttendanceProps> = ({ people, attendance, onDa
             />
             {pinError && <p className="text-red-600 text-xs mb-3 font-bold">الرمز غير صحيح</p>}
             
-            <div className="flex gap-2">
+            <div className="flex gap-2 mb-4">
               <button type="button" onClick={() => setShowPinModal(false)} className="flex-1 py-2 rounded-xl text-slate-700 bg-slate-100 text-sm font-bold">إلغاء</button>
               <button type="submit" className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-sm font-bold shadow-lg shadow-purple-200">دخول</button>
             </div>
           </form>
+
+          <div className="border-t border-slate-100 pt-3">
+             <button onClick={handleSwitchToDev} className="flex items-center justify-center gap-1.5 w-full text-[10px] text-slate-400 hover:text-purple-600 font-bold transition-colors">
+                <ShieldCheck size={12} />
+                هل تريد التعديل؟ (دخول كمطور)
+             </button>
+          </div>
         </div>
       </div>
     );
